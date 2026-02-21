@@ -578,6 +578,15 @@
       opacity: 0.85;
     }
 
+    /* ── Search confirm ── */
+    .location-confirm {
+      color: #6fcf97;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-top: 8px;
+      text-align: center;
+    }
+
     /* ── Day Detail ── */
     #day-detail-cards {
       padding: 16px;
@@ -940,12 +949,16 @@ async function reverseGeocode(lat, lon) {
 
 async function forwardGeocode(query) {
   const r = await fetch(
-    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
+    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1&countrycodes=us`,
     { headers: { 'User-Agent': 'GolfWeatherApp/1.0' } }
   );
   const d = await r.json();
   if (!d.length) throw new Error('Location not found');
-  return { lat: parseFloat(d[0].lat), lon: parseFloat(d[0].lon), name: d[0].display_name?.split(',')[0] || query };
+  const a = d[0].address || {};
+  const city  = a.city || a.town || a.village || a.hamlet || a.suburb || a.county || d[0].display_name.split(',')[0];
+  const state = a.state || '';
+  const name  = state ? `${city}, ${state}` : city;
+  return { lat: parseFloat(d[0].lat), lon: parseFloat(d[0].lon), name };
 }
 
 async function fetchWeather(lat, lon) {
@@ -990,7 +1003,9 @@ async function fetchSunriseSunset(lat, lon) {
 // ─── Main Load ────────────────────────────────────────────────────────────────
 async function loadWeather(lat, lon, nameOverride) {
   showScreen('loading-screen');
-  document.getElementById('loading-msg').textContent = 'Fetching weather…';
+  document.getElementById('loading-msg').textContent = nameOverride
+    ? `Loading weather for ${nameOverride}…`
+    : 'Fetching weather…';
 
   try {
     const [weather, sun, locationName] = await Promise.all([
@@ -1421,12 +1436,16 @@ async function doSearch() {
   const query = document.getElementById('location-input').value.trim();
   const errEl = document.getElementById('location-error');
   errEl.textContent = '';
+  errEl.className = '';
   if (!query) { errEl.textContent = 'Please enter a location.'; return; }
   try {
     const result = await forwardGeocode(query);
+    errEl.textContent = `📍 ${result.name}`;
+    errEl.className = 'location-confirm';
     await loadWeather(result.lat, result.lon, result.name);
   } catch (e) {
     errEl.textContent = e.message || 'Location not found.';
+    errEl.className = '';
   }
 }
 
