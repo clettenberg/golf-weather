@@ -548,6 +548,12 @@
       align-items: center;
     }
     .day-temp { font-weight: 700; color: var(--text-primary); }
+    .day-tee-row {
+      margin-top: 6px;
+      font-size: 0.82rem;
+      color: var(--green-mid);
+      font-weight: 600;
+    }
 
     /* ── Mobile header fix ── */
     @media (max-width: 400px) {
@@ -892,6 +898,7 @@ async function fetchWeather(lat, lon) {
       'precipitation_probability_max',
       'wind_speed_10m_max', 'wind_gusts_10m_max', 'wind_direction_10m_dominant',
       'uv_index_max',
+      'sunrise', 'sunset',
     ].join(','),
     wind_speed_unit: 'mph',
     temperature_unit: 'fahrenheit',
@@ -1094,9 +1101,12 @@ function renderHourly() {
 }
 
 function renderWeekly() {
-  const { weather } = state;
+  const { weather, utcOffsetSeconds } = state;
   const daily = weather.daily;
   if (!daily || !daily.time) return;
+
+  const buffer = parseFloat(document.getElementById('inp-buffer').value) || 30;
+  const dur18  = parseFloat(document.getElementById('inp-18hole').value) || 4.5;
 
   const todayStr = daily.time[0]; // YYYY-MM-DD format from API
   const container = document.getElementById('weekly-cards');
@@ -1114,13 +1124,22 @@ function renderWeekly() {
 
     const score = golfScore(windMax, precipMax, avgTemp, 50);
 
+    // Tee times from per-day sunrise/sunset
+    let teeRow = '';
+    if (daily.sunrise && daily.sunset && daily.sunrise[i] && daily.sunset[i]) {
+      const earliest18 = addMinutesToISO(daily.sunrise[i], buffer);
+      const latest18   = new Date(new Date(daily.sunset[i]).getTime() - hoursToMs(dur18)).toISOString();
+      const earlyFmt   = formatTimeFromUTC(earliest18, utcOffsetSeconds);
+      const lateFmt    = formatTimeFromUTC(latest18,   utcOffsetSeconds);
+      teeRow = `<div class="day-tee-row">⛳ 18-hole window: ${earlyFmt} – ${lateFmt}</div>`;
+    }
+
     // Format date label
     let dateLabel;
     if (dateStr === todayStr) {
       dateLabel = 'Today';
     } else {
       const [y, m, d] = dateStr.split('-').map(Number);
-      // Use UTC date to avoid timezone shift
       const dt = new Date(Date.UTC(y, m - 1, d));
       dateLabel = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
     }
@@ -1140,6 +1159,7 @@ function renderWeekly() {
         <span>${windDir} ${Math.round(windMax)} mph (g${Math.round(gustMax)})</span>
         <span>${precipMax}% rain</span>
       </div>
+      ${teeRow}
     `;
     container.appendChild(card);
   });
