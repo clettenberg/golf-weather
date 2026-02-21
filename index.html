@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Golf Weather</title>
   <style>
     :root {
@@ -32,6 +32,9 @@
       background: linear-gradient(135deg, var(--green-dark), var(--green-mid));
       color: white;
       padding: 16px 20px;
+      padding-top: max(16px, env(safe-area-inset-top, 0px) + 10px);
+      padding-left: max(20px, env(safe-area-inset-left, 0px) + 16px);
+      padding-right: max(20px, env(safe-area-inset-right, 0px) + 16px);
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -76,6 +79,9 @@
       align-items: center;
       justify-content: center;
       padding: 40px 20px;
+      /* Respect iPhone notch / home indicator */
+      padding-top: max(40px, env(safe-area-inset-top, 0px) + 24px);
+      padding-bottom: max(40px, env(safe-area-inset-bottom, 0px) + 24px);
       text-align: center;
       background: linear-gradient(160deg, var(--green-dark) 0%, var(--green-mid) 60%, var(--cream) 100%);
     }
@@ -105,6 +111,14 @@
       width: 100%;
       max-width: 420px;
       box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    }
+
+    @media (max-height: 700px) {
+      /* Compact layout for short screens (older iPhones in landscape, SE) */
+      .location-logo { font-size: 2.5rem; margin-bottom: 10px; }
+      #location-screen h2 { font-size: 1.4rem; }
+      #location-screen p { margin-bottom: 20px; }
+      .location-card { padding: 20px; }
     }
 
     .btn-primary {
@@ -147,7 +161,7 @@
       border: 1.5px solid var(--border);
       border-radius: 10px;
       padding: 12px 14px;
-      font-size: 0.95rem;
+      font-size: 1rem; /* ≥16px prevents iOS Safari auto-zoom on focus */
       outline: none;
       transition: border-color 0.2s;
     }
@@ -431,7 +445,7 @@
       border: 1.5px solid var(--border);
       border-radius: 8px;
       padding: 8px 10px;
-      font-size: 0.95rem;
+      font-size: 1rem; /* ≥16px prevents iOS Safari auto-zoom on focus */
       outline: none;
       transition: border-color 0.2s;
     }
@@ -1178,8 +1192,14 @@ document.getElementById('btn-geolocate').addEventListener('click', () => {
   navigator.geolocation.getCurrentPosition(
     pos => loadWeather(pos.coords.latitude, pos.coords.longitude),
     err => {
-      errEl.textContent = 'Location access denied. Please search manually.';
-    }
+      const msgs = {
+        1: 'Location access denied — please search manually or allow access in Settings > Safari > Location.',
+        2: 'Location unavailable. Try searching manually.',
+        3: 'Location timed out. Try searching manually.',
+      };
+      errEl.textContent = msgs[err.code] || 'Could not get location. Please search manually.';
+    },
+    { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
   );
 });
 
