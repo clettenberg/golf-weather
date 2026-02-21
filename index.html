@@ -571,6 +571,55 @@
       color: var(--green-mid);
       font-weight: 600;
     }
+    .day-tee-row-2 {
+      display: block;
+      padding-left: 1.25em;
+      font-size: 0.79rem;
+      opacity: 0.85;
+    }
+
+    /* ── Day Detail ── */
+    #day-detail-cards {
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+      max-width: 960px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    @media (min-width: 680px) {
+      #day-detail-cards {
+        padding: 20px;
+        grid-template-columns: 1fr 1fr;
+      }
+      .detail-conditions { grid-column: 1; }
+      .detail-score      { grid-column: 2; }
+      .detail-tee        { grid-column: 1 / -1; }
+      .detail-hourly     { grid-column: 1 / -1; }
+    }
+
+    .day-detail-back {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--green-mid);
+      padding: 0 0 4px;
+    }
+
+    .day-detail-title {
+      grid-column: 1 / -1;
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
 
     /* ── Mobile header fix ── */
     @media (max-width: 400px) {
@@ -748,6 +797,10 @@
 
     <div id="weekly-content" style="display:none;">
       <div id="weekly-cards"></div>
+    </div>
+
+    <div id="day-detail-content" style="display:none;">
+      <div id="day-detail-cards"></div>
     </div>
 
   </div><!-- /weather-screen -->
@@ -1124,6 +1177,7 @@ function renderWeekly() {
 
   const buffer = parseFloat(document.getElementById('inp-buffer').value) || 30;
   const dur18  = parseFloat(document.getElementById('inp-18hole').value) || 4.5;
+  const dur9   = parseFloat(document.getElementById('inp-9hole').value)  || 2.5;
 
   const todayStr = daily.time[0]; // YYYY-MM-DD format from API
   const container = document.getElementById('weekly-cards');
@@ -1144,11 +1198,13 @@ function renderWeekly() {
     // Tee times from per-day sunrise/sunset
     let teeRow = '';
     if (daily.sunrise && daily.sunset && daily.sunrise[i] && daily.sunset[i]) {
-      const earliest18 = addMinutesToISO(daily.sunrise[i], buffer);
-      const latest18   = new Date(new Date(daily.sunset[i]).getTime() - hoursToMs(dur18)).toISOString();
-      const earlyFmt   = formatTimeFromUTC(earliest18, utcOffsetSeconds);
-      const lateFmt    = formatTimeFromUTC(latest18,   utcOffsetSeconds);
-      teeRow = `<div class="day-tee-row">⛳ 18-hole window: ${earlyFmt} – ${lateFmt}</div>`;
+      const earliest18  = addMinutesToISO(daily.sunrise[i], buffer);
+      const latest18    = new Date(new Date(daily.sunset[i]).getTime() - hoursToMs(dur18)).toISOString();
+      const latest9     = new Date(new Date(daily.sunset[i]).getTime() - hoursToMs(dur9)).toISOString();
+      const earlyFmt    = formatTimeFromUTC(earliest18, utcOffsetSeconds);
+      const late18Fmt   = formatTimeFromUTC(latest18,   utcOffsetSeconds);
+      const late9Fmt    = formatTimeFromUTC(latest9,    utcOffsetSeconds);
+      teeRow = `<div class="day-tee-row">⛳ Earliest: ${earlyFmt}<span class="day-tee-row-2">Latest 18: ${late18Fmt} &nbsp;·&nbsp; Latest 9: ${late9Fmt}</span></div>`;
     }
 
     // Format date label
@@ -1178,7 +1234,158 @@ function renderWeekly() {
       </div>
       ${teeRow}
     `;
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', () => {
+      document.getElementById('weekly-content').style.display = 'none';
+      document.getElementById('day-detail-content').style.display = '';
+      renderDayDetail(i);
+    });
+
     container.appendChild(card);
+  });
+}
+
+function renderDayDetail(i) {
+  const { weather, utcOffsetSeconds } = state;
+  const daily = weather.daily;
+  const hourly = weather.hourly;
+
+  const dateStr  = daily.time[i];
+  const todayStr = daily.time[0];
+
+  let dateLabel;
+  if (dateStr === todayStr) {
+    dateLabel = 'Today';
+  } else {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dateLabel = dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
+  }
+
+  const windMax   = daily.wind_speed_10m_max[i];
+  const gustMax   = daily.wind_gusts_10m_max[i];
+  const windDir   = degreesToCompass(daily.wind_direction_10m_dominant[i]);
+  const precipMax = daily.precipitation_probability_max[i];
+  const tempMax   = daily.temperature_2m_max[i];
+  const tempMin   = daily.temperature_2m_min[i];
+  const avgTemp   = (tempMax + tempMin) / 2;
+  const uvMax     = (daily.uv_index_max && daily.uv_index_max[i] != null) ? daily.uv_index_max[i] : '—';
+  const code      = daily.weather_code[i];
+
+  const score    = golfScore(windMax, precipMax, avgTemp, 50);
+  const emojiMap = { Excellent: '🟢', Good: '🟡', Fair: '🟠', Poor: '🔴' };
+
+  const buffer = parseFloat(document.getElementById('inp-buffer').value) || 30;
+  const dur18  = parseFloat(document.getElementById('inp-18hole').value) || 4.5;
+  const dur9   = parseFloat(document.getElementById('inp-9hole').value)  || 2.5;
+  let teeHtml  = '<p style="color:var(--text-secondary)">Sunrise/sunset data unavailable.</p>';
+  if (daily.sunrise && daily.sunset && daily.sunrise[i] && daily.sunset[i]) {
+    const earliest  = addMinutesToISO(daily.sunrise[i], buffer);
+    const latest18  = new Date(new Date(daily.sunset[i]).getTime() - hoursToMs(dur18)).toISOString();
+    const latest9   = new Date(new Date(daily.sunset[i]).getTime() - hoursToMs(dur9)).toISOString();
+    const earlyFmt  = formatTimeFromUTC(earliest,  utcOffsetSeconds);
+    const late18Fmt = formatTimeFromUTC(latest18,  utcOffsetSeconds);
+    const late9Fmt  = formatTimeFromUTC(latest9,   utcOffsetSeconds);
+    teeHtml = `
+      <div style="display:flex;gap:20px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:0.75rem;color:var(--text-secondary);font-weight:700;margin-bottom:2px;">EARLIEST</div>
+          <div style="font-size:1.1rem;font-weight:800;color:var(--green-light);">${earlyFmt}</div>
+        </div>
+        <div>
+          <div style="font-size:0.75rem;color:var(--text-secondary);font-weight:700;margin-bottom:2px;">LATEST 18</div>
+          <div style="font-size:1.1rem;font-weight:800;color:var(--green-mid);">${late18Fmt}</div>
+        </div>
+        <div>
+          <div style="font-size:0.75rem;color:var(--text-secondary);font-weight:700;margin-bottom:2px;">LATEST 9</div>
+          <div style="font-size:1.1rem;font-weight:800;color:var(--green-mid);">${late9Fmt}</div>
+        </div>
+      </div>`;
+  }
+
+  const dayRows = [];
+  for (let j = 0; j < hourly.time.length; j++) {
+    const timeStr = hourly.time[j];
+    if (!timeStr.startsWith(dateStr)) continue;
+    const hourMatch = timeStr.match(/T(\d{2}):/);
+    const rowHour   = hourMatch ? parseInt(hourMatch[1]) : 0;
+
+    const temp   = Math.round(hourly.temperature_2m[j]);
+    const wind   = Math.round(hourly.wind_speed_10m[j]);
+    const gusts  = Math.round(hourly.wind_gusts_10m[j]);
+    const dir    = degreesToCompass(hourly.wind_direction_10m[j]);
+    const precip = hourly.precipitation_probability[j];
+    const cloud  = hourly.cloud_cover[j];
+    const hCode  = hourly.weather_code[j];
+    const app    = Math.round(hourly.apparent_temperature[j]);
+
+    const hScore   = golfScore(wind, precip, temp, cloud);
+    const rowClass = {
+      'badge-excellent': 'row-excellent',
+      'badge-good':      'row-good',
+      'badge-fair':      'row-fair',
+      'badge-poor':      'row-poor',
+    }[hScore.cls] || '';
+
+    let h = rowHour;
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    const timeDisplay = `${h}:00 ${ampm}`;
+
+    dayRows.push(`
+      <tr class="hourly-row ${rowClass}">
+        <td class="time-cell">${timeDisplay}</td>
+        <td>${wmoCodeToEmoji(hCode)} ${wmoCodeToLabel(hCode)}</td>
+        <td>${temp}°F <span style="color:var(--text-secondary);font-size:0.78rem;">/${app}°</span></td>
+        <td class="wind-cell">${dir} ${wind} <span style="color:var(--text-secondary);font-size:0.78rem;">g${gusts}</span></td>
+        <td class="precip-cell">${precip}%</td>
+        <td class="cloud-cell">${cloud}%</td>
+      </tr>`);
+  }
+
+  const container = document.getElementById('day-detail-cards');
+  container.innerHTML = `
+    <button class="day-detail-back" id="day-detail-back-btn">← Back to Week</button>
+    <div class="day-detail-title">${wmoCodeToEmoji(code)} ${dateLabel}</div>
+
+    <div class="card detail-conditions">
+      <div class="card-title">Conditions</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+        <div><span style="color:var(--text-secondary);font-size:0.78rem;">HIGH / LOW</span><br><strong>${Math.round(tempMax)}° / ${Math.round(tempMin)}°F</strong></div>
+        <div><span style="color:var(--text-secondary);font-size:0.78rem;">WIND</span><br><strong>${windDir} ${Math.round(windMax)} mph</strong><br><span style="font-size:0.82rem;color:var(--text-secondary);">gusts ${Math.round(gustMax)} mph</span></div>
+        <div><span style="color:var(--text-secondary);font-size:0.78rem;">PRECIP</span><br><strong>${precipMax}%</strong></div>
+        <div><span style="color:var(--text-secondary);font-size:0.78rem;">UV INDEX</span><br><strong>${uvMax}</strong></div>
+      </div>
+    </div>
+
+    <div class="card detail-score">
+      <div class="card-title">Golf Conditions</div>
+      <div class="score-badge ${score.cls}" style="margin-top:8px;">${emojiMap[score.label] || ''} ${score.label}</div>
+    </div>
+
+    <div class="card detail-tee">
+      <div class="card-title">Tee Times</div>
+      <div style="margin-top:8px;">${teeHtml}</div>
+    </div>
+
+    <div class="card detail-hourly">
+      <div class="card-title">Hourly Forecast</div>
+      <div class="hourly-scroll" style="margin-top:8px;">
+        <table class="hourly-table">
+          <thead>
+            <tr>
+              <th>Time</th><th>Cond.</th><th>Temp</th><th>Wind</th><th>Precip%</th><th>Cloud</th>
+            </tr>
+          </thead>
+          <tbody>${dayRows.join('')}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('day-detail-back-btn').addEventListener('click', () => {
+    document.getElementById('day-detail-content').style.display = 'none';
+    document.getElementById('weekly-content').style.display = '';
   });
 }
 
@@ -1242,8 +1449,9 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     const view = tab.dataset.view;
-    document.getElementById('weather-content').style.display = view === 'today' ? '' : 'none';
-    document.getElementById('weekly-content').style.display  = view === 'week'  ? '' : 'none';
+    document.getElementById('weather-content').style.display  = view === 'today' ? '' : 'none';
+    document.getElementById('weekly-content').style.display   = view === 'week'  ? '' : 'none';
+    document.getElementById('day-detail-content').style.display = 'none';
   });
 });
 
