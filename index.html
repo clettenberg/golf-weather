@@ -491,6 +491,70 @@
       .tee-grid { grid-template-columns: 1fr; }
       .current-temp { font-size: 2.2rem; }
     }
+
+    /* ── Tab bar ── */
+    #view-tabs { display: flex; background: var(--green-dark); }
+    .tab {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: transparent;
+      color: rgba(255,255,255,0.6);
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      min-height: 44px;
+      transition: color 0.2s, border-bottom-color 0.2s;
+    }
+    .tab.active { color: white; border-bottom-color: var(--green-light); }
+    .tab:hover:not(.active) { color: rgba(255,255,255,0.85); }
+
+    /* ── Weekly cards ── */
+    #weekly-content { padding: 16px; max-width: 960px; margin: 0 auto; }
+    .day-card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      box-shadow: var(--shadow);
+      margin-bottom: 10px;
+    }
+    .day-card.today { border-left: 4px solid var(--green-light); }
+    .day-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .day-name { font-weight: 700; font-size: 0.95rem; }
+    .day-weather { font-size: 0.88rem; color: var(--text-secondary); }
+    .day-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+    .day-card-bottom {
+      display: flex;
+      gap: 16px;
+      margin-top: 8px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .day-temp { font-weight: 700; color: var(--text-primary); }
+
+    /* ── Mobile header fix ── */
+    @media (max-width: 400px) {
+      .btn-icon { padding: 6px 8px; font-size: 0.75rem; }
+      #btn-refresh::after { content: ''; }
+      #btn-change-location { font-size: 0.72rem; }
+    }
   </style>
 </head>
 <body>
@@ -529,6 +593,11 @@
         <button class="btn-icon" id="btn-refresh">↻ Refresh</button>
         <button class="btn-icon" id="btn-change-location">Change</button>
       </div>
+    </div>
+
+    <div id="view-tabs">
+      <button class="tab active" data-view="today">Today</button>
+      <button class="tab" data-view="week">This Week</button>
     </div>
 
     <div id="weather-content">
@@ -653,6 +722,11 @@
       </div>
 
     </div><!-- /weather-content -->
+
+    <div id="weekly-content" style="display:none;">
+      <div id="weekly-cards"></div>
+    </div>
+
   </div><!-- /weather-screen -->
 
 </div><!-- /app -->
@@ -812,11 +886,17 @@ async function fetchWeather(lat, lon) {
       'weather_code','cloud_cover','wind_speed_10m','wind_direction_10m',
       'wind_gusts_10m','uv_index'
     ].join(','),
-    daily: 'temperature_2m_max,temperature_2m_min,precipitation_sum,uv_index_max',
+    daily: [
+      'weather_code',
+      'temperature_2m_max', 'temperature_2m_min',
+      'precipitation_probability_max',
+      'wind_speed_10m_max', 'wind_gusts_10m_max', 'wind_direction_10m_dominant',
+      'uv_index_max',
+    ].join(','),
     wind_speed_unit: 'mph',
     temperature_unit: 'fahrenheit',
     timezone: 'auto',
-    forecast_days: 1,
+    forecast_days: 7,
   });
   const r = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
   return r.json();
@@ -850,6 +930,11 @@ async function loadWeather(lat, lon, nameOverride) {
     state.utcOffsetSeconds = weather.utc_offset_seconds || 0;
 
     renderWeather();
+    // Reset tab state to Today on each fresh load
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('.tab[data-view="today"]').classList.add('active');
+    document.getElementById('weather-content').style.display = '';
+    document.getElementById('weekly-content').style.display  = 'none';
     showScreen('weather-screen');
   } catch (err) {
     console.error(err);
@@ -892,6 +977,9 @@ function renderWeather() {
 
   // Hourly
   renderHourly();
+
+  // Weekly
+  renderWeekly();
 }
 
 function renderGolfScore(wind, precip, temp, cloud) {
@@ -1005,6 +1093,58 @@ function renderHourly() {
   }
 }
 
+function renderWeekly() {
+  const { weather } = state;
+  const daily = weather.daily;
+  if (!daily || !daily.time) return;
+
+  const todayStr = daily.time[0]; // YYYY-MM-DD format from API
+  const container = document.getElementById('weekly-cards');
+  container.innerHTML = '';
+
+  daily.time.forEach((dateStr, i) => {
+    const windMax   = daily.wind_speed_10m_max[i];
+    const gustMax   = daily.wind_gusts_10m_max[i];
+    const windDir   = degreesToCompass(daily.wind_direction_10m_dominant[i]);
+    const precipMax = daily.precipitation_probability_max[i];
+    const tempMax   = daily.temperature_2m_max[i];
+    const tempMin   = daily.temperature_2m_min[i];
+    const avgTemp   = (tempMax + tempMin) / 2;
+    const code      = daily.weather_code[i];
+
+    const score = golfScore(windMax, precipMax, avgTemp, 50);
+
+    // Format date label
+    let dateLabel;
+    if (dateStr === todayStr) {
+      dateLabel = 'Today';
+    } else {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      // Use UTC date to avoid timezone shift
+      const dt = new Date(Date.UTC(y, m - 1, d));
+      dateLabel = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+    }
+
+    const emojiMap = { Excellent: '🟢', Good: '🟡', Fair: '🟠', Poor: '🔴' };
+
+    const card = document.createElement('div');
+    card.className = 'day-card' + (dateStr === todayStr ? ' today' : '');
+    card.innerHTML = `
+      <div class="day-card-top">
+        <span class="day-name">${dateLabel}</span>
+        <span class="day-weather">${wmoCodeToEmoji(code)} ${wmoCodeToLabel(code)}</span>
+        <span class="day-badge ${score.cls}">${emojiMap[score.label] || ''} ${score.label}</span>
+      </div>
+      <div class="day-card-bottom">
+        <span class="day-temp">Hi ${Math.round(tempMax)}° / Lo ${Math.round(tempMin)}°</span>
+        <span>${windDir} ${Math.round(windMax)} mph (g${Math.round(gustMax)})</span>
+        <span>${precipMax}% rain</span>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
 // ─── Event Listeners ──────────────────────────────────────────────────────────
 
 // Geolocation
@@ -1051,6 +1191,17 @@ document.getElementById('btn-change-location').addEventListener('click', () => {
 // Refresh
 document.getElementById('btn-refresh').addEventListener('click', () => {
   if (state.lat !== null) loadWeather(state.lat, state.lon, state.locationName);
+});
+
+// Tab navigation
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const view = tab.dataset.view;
+    document.getElementById('weather-content').style.display = view === 'today' ? '' : 'none';
+    document.getElementById('weekly-content').style.display  = view === 'week'  ? '' : 'none';
+  });
 });
 
 // Tee time settings live update
