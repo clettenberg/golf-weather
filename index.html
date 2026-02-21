@@ -939,18 +939,17 @@ function hoursToMs(h) { return h * 3600000; }
 // ─── API Calls ────────────────────────────────────────────────────────────────
 async function reverseGeocode(lat, lon) {
   const r = await fetch(
-    `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
-    { headers: { 'User-Agent': 'GolfWeatherApp/1.0' } }
+    `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`
   );
   const d = await r.json();
-  const a = d.address || {};
-  return a.city || a.town || a.village || a.county || d.display_name?.split(',')[0] || 'Unknown';
+  const city  = d.city || d.locality || d.principalSubdivision || 'Unknown';
+  const state = d.principalSubdivision || '';
+  return (state && state !== city) ? `${city}, ${state}` : city;
 }
 
 async function forwardGeocode(query) {
   const r = await fetch(
-    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1&countrycodes=us`,
-    { headers: { 'User-Agent': 'GolfWeatherApp/1.0' } }
+    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1&countrycodes=us`
   );
   const d = await r.json();
   if (!d.length) throw new Error('Location not found');
