@@ -1012,7 +1012,9 @@ async function loadWeather(lat, lon, nameOverride) {
     document.querySelector('.tab[data-view="today"]').classList.add('active');
     document.getElementById('weather-content').style.display = '';
     document.getElementById('weekly-content').style.display  = 'none';
+    document.getElementById('day-detail-content').style.display = 'none';
     showScreen('weather-screen');
+    history.replaceState({ view: 'today' }, '');
   } catch (err) {
     console.error(err);
     document.getElementById('location-error').textContent = 'Failed to load weather: ' + err.message;
@@ -1239,6 +1241,7 @@ function renderWeekly() {
       document.getElementById('weekly-content').style.display = 'none';
       document.getElementById('day-detail-content').style.display = '';
       renderDayDetail(i);
+      history.pushState({ view: 'day', index: i }, '');
     });
 
     container.appendChild(card);
@@ -1443,16 +1446,34 @@ document.getElementById('btn-refresh').addEventListener('click', () => {
   if (state.lat !== null) loadWeather(state.lat, state.lon, state.locationName);
 });
 
+// ─── View helper ─────────────────────────────────────────────────────────────
+function showView(view) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+  document.getElementById('weather-content').style.display    = view === 'today' ? '' : 'none';
+  document.getElementById('weekly-content').style.display     = view === 'week'  ? '' : 'none';
+  document.getElementById('day-detail-content').style.display = 'none';
+}
+
 // Tab navigation
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
     const view = tab.dataset.view;
-    document.getElementById('weather-content').style.display  = view === 'today' ? '' : 'none';
-    document.getElementById('weekly-content').style.display   = view === 'week'  ? '' : 'none';
-    document.getElementById('day-detail-content').style.display = 'none';
+    showView(view);
+    history.pushState({ view }, '');
   });
+});
+
+// Browser back/forward
+window.addEventListener('popstate', e => {
+  const s = e.state;
+  if (!s || !state.weather) return;
+  if (s.view === 'day') {
+    document.getElementById('weekly-content').style.display     = 'none';
+    document.getElementById('day-detail-content').style.display = '';
+    renderDayDetail(s.index);
+  } else {
+    showView(s.view || 'today');
+  }
 });
 
 // Tee time settings live update
