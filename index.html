@@ -1014,7 +1014,7 @@ async function loadWeather(lat, lon, nameOverride) {
     document.getElementById('weekly-content').style.display  = 'none';
     document.getElementById('day-detail-content').style.display = 'none';
     showScreen('weather-screen');
-    history.replaceState({ view: 'today' }, '');
+    history.replaceState(null, '', '#today');
   } catch (err) {
     console.error(err);
     document.getElementById('location-error').textContent = 'Failed to load weather: ' + err.message;
@@ -1241,7 +1241,7 @@ function renderWeekly() {
       document.getElementById('weekly-content').style.display = 'none';
       document.getElementById('day-detail-content').style.display = '';
       renderDayDetail(i);
-      history.pushState({ view: 'day', index: i }, '');
+      history.pushState(null, '', `#day/${i}`);
     });
 
     container.appendChild(card);
@@ -1408,11 +1408,11 @@ document.getElementById('btn-geolocate').addEventListener('click', () => {
       const msgs = {
         1: 'Location access denied — please search manually or allow access in Settings > Safari > Location.',
         2: 'Location unavailable. Try searching manually.',
-        3: 'Location timed out. Try searching manually.',
+        3: 'Location timed out — try again or search manually.',
       };
       errEl.textContent = msgs[err.code] || 'Could not get location. Please search manually.';
     },
-    { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+    { enableHighAccuracy: false, timeout: 30000, maximumAge: 300000 }
   );
 });
 
@@ -1459,20 +1459,25 @@ document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     const view = tab.dataset.view;
     showView(view);
-    history.pushState({ view }, '');
+    history.pushState(null, '', '#' + view);
   });
 });
 
 // Browser back/forward
-window.addEventListener('popstate', e => {
-  const s = e.state;
-  if (!s || !state.weather) return;
-  if (s.view === 'day') {
-    document.getElementById('weekly-content').style.display     = 'none';
-    document.getElementById('day-detail-content').style.display = '';
-    renderDayDetail(s.index);
+window.addEventListener('popstate', () => {
+  if (!state.weather) return;
+  const hash = location.hash.slice(1); // strip leading '#'
+  if (hash.startsWith('day/')) {
+    const idx = parseInt(hash.slice(4));
+    if (!isNaN(idx)) {
+      document.getElementById('weekly-content').style.display     = 'none';
+      document.getElementById('day-detail-content').style.display = '';
+      renderDayDetail(idx);
+    }
+  } else if (hash === 'week') {
+    showView('week');
   } else {
-    showView(s.view || 'today');
+    showView('today');
   }
 });
 
